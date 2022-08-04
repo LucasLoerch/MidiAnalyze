@@ -1,0 +1,693 @@
+
+
+###################################
+#### MidiAnalyze Version 1.0 ######
+####### 29th April 2021 ###########
+######### Lucas Lörch #############
+###################################
+
+#####################
+### load packages ###
+#####################
+
+import music21 as m21
+import sys
+import os
+import glob
+import pandas as pd
+
+
+##########################
+### Utility functions ####
+##########################
+
+
+### checking and adding system paths ####
+#########################################
+
+def indicateFilePaths(performanceDataPath, solutionDataPath):
+    """In this function you are asked to indicate the directories your
+    performance midi data and your correct solutions midi data are in.
+    Please note that directories in Windows need to be indicated with a
+    double backslash (\\\\)(e.g. C:\\\\User\\\\myFiles\\\\thisDirectory) 
+    The function checks if the indicated file paths are correctly specified
+    and defines them as the variables performanceDataIn
+    and solutionDataIn that are used in later functions."""
+    if os.path.exists(performanceDataPath):                 # check if the inidcated DataPath exists
+        sys.path.append(performanceDataPath)                # append it to the global list of system paths
+        global performanceDataIn 
+        if not performanceDataPath[-1]=="\\":               # check if the dataPath ends with a double backslash
+            performanceDataIn=performanceDataPath+"\\"      # if not add the double backslash
+        else:
+            performanceDataIn=performanceDataPath
+        statement1="Your indicated performanceDataPath is valid."
+    else:
+        statement1="Your indicated performanceDataPath is erroneous. Please correct."
+    if os.path.exists(solutionDataPath):                    # do the same for the solutionDataPath
+        sys.path.append(solutionDataPath)
+        global solutionDataIn
+        if not solutionDataPath[-1]=="\\":
+            solutionDataIn=solutionDataPath+"\\"
+        else:
+            solutionDataIn=solutionDataPath
+        statement2="Your indicated solutionDataPath is valid."
+    else:
+        statement2="Your indicated solutionDataPath is erroneous. Please correct."
+    print(statement1, statement2)
+    
+
+### importing MIDI files ###
+############################
+    
+def importMidiFiles(performanceDataPath, startItemName="NaN", endItemName="NaN", startSubjectName="NaN", endSubjectName="NaN"):
+    """This funcion converts all the Midi files that can be found in the
+    directory specified under performanceDataPath into music21 stream objects
+    for further analysis. The function creates a results DataFrame that
+    contains each file as a music21 stream object in the column MidiFile.
+    If your filenames contain item and participant
+    identifiers (e.g. participant1_item15.mid) then you can specify where
+    both identifiers start and end and the information will be added
+    to your data frame."""
+    allFiles=[]
+    allData=[]                                                      # create empty lists
+    os.chdir(performanceDataPath)                                   # set the directory from which data should be imported
+    for eachFile in glob.glob("*.mid"):                             # add each file in that directory to the two lists
+        allFiles.append(eachFile)
+        allData.append(eachFile)
+    i=len(allFiles)-1                                               # iterate through all the elements in the list
+    while i>=0:
+        allData[i]=m21.midi.MidiFile()                              # change each element in allData into a midi file
+        allData[i].open(performanceDataPath+allFiles[i])            # open the correct midi file in the directory by using the names in allFiles
+        allData[i].read()
+        allData[i].close()                                          # read and close that file
+        allData[i]=m21.midi.translate.midiFileToStream(allData[i])  # transform it into a m21 stream object
+        allFiles[i]=allFiles[i][0:-4]                               # delete the .mid ending from the names in the allFiles list
+        i=i-1
+    allDataSeries=pd.Series(allData, index=allFiles, name="MidiFile") # transform the allData list into a series
+    global results
+    results=pd.DataFrame(allDataSeries)                             # create a dataFrame with that series
+    if not startItemName=="NaN" and not endItemName=="NaN":         # check if the start and end of an itemname is indicated
+        j=len(results.index)-1                                      # iterate through a column of the dataFrame
+        results["item"]="NaN"                                       # create a variable "item"
+        while j>=0:
+            results["item"][j]=results.index[j][startItemName:endItemName] # define the item as a part of the index of the dataframe
+            j=j-1
+    if not startSubjectName=="NaN" and not endSubjectName=="NaN":   # do the same for the subject
+        y=len(results.index)-1
+        results["participant"]="NaN"
+        while y>=0:
+            results["participant"][y]=results.index[y][startSubjectName:endSubjectName]
+            y=y-1
+    statement1=" "
+    statement2=" "
+    if startItemName=="NaN" or endItemName=="NaN":
+        statement1="""You did not indicate at which position in your filename the item identifier starts and ends.
+        Your dataFrame will not have a column that indicates the performed item."""
+    if startSubjectName=="NaN" or endSubjectName=="Nan":
+        statement2="""You did not indicate at which position in your filename the participant identifier
+        starts and ends. Your dataFrame will not have a column that indicates the participant that perfomed
+        the melody."""
+    print(statement1, statement2, "Your midi files are succesfully imported into the results DataFrame.")
+
+
+
+### importing correct solutions ###
+###################################
+
+def importCorrectSolutions(solutionDataPath):
+    """This funcion imports all the Midi files that can be found in the
+    directory specified under solutionDataPath. These files will be added to the
+    correctSolutions DataSeries as music21 stream objects."""
+    correctFiles=[]                             # create empty lists
+    correctData=[]
+    os.chdir(solutionDataPath)
+    for allFiles in glob.glob("*.mid"):         # add all files in a given directory to the lists
+        correctFiles.append(allFiles)
+        correctData.append(allFiles)
+    i=len(correctFiles)-1
+    while i>=0:                                 # iterate through the list and read in the correct midi files and convert to m21 stream object
+        correctData[i]=m21.midi.MidiFile()
+        correctData[i].open(solutionDataPath+correctFiles[i])
+        correctData[i].read()
+        correctData[i].close()
+        correctData[i]=m21.midi.translate.midiFileToStream(correctData[i])
+        correctFiles[i]=correctFiles[i][0:-4]
+        i=i-1
+    global correctSolutions
+    correctSolutions=pd.Series(correctData, index=correctFiles, name="correctMidiFiles") # transform into a dataSeries
+    print("Your midi files are succesfully imported into the correctSolutions DataSeries")
+
+
+
+### adding correct solutions ###
+################################
+
+def addCorrectSolutions():
+    """This function adds the correct solutions to the results dataFrame. 
+    It is very important that the solutions are assigned to the item they
+    belong to, so that each performed melody is compared with the respective
+    solution. Therefore, your correct solutions need to be named exactly as
+    the item identifier."""
+    if len(results.columns)>1 and results.columns[1]=="item":           # perform only if dataFrame contains indication about items
+        i=len(results.index)-1
+        results["correct"]="NaN"                                        # create a correct variable
+        while i>=0:
+            item=results["item"][i]
+            results["correct"][i]=correctSolutions[item]                # define that the correct solution for each variable should be taken from the correctSolution dataSeries
+            i=i-1
+        print("The correct solution midi files were successfully added to the results dataFrame")
+    else:
+        print("The item is not specified in your dataframe. Mapping of correct Solutions is not possible and hence correctSolutions were not added to the dataFrame")
+
+
+### export the results dataFrame into a .csv ###
+################################################
+
+def exportResults(resultsFileName):
+    """This function exports your results dataFrame as a .csv file into the
+    directory solutionDataIn."""
+    results.to_csv(path_or_buf=solutionDataIn+resultsFileName+".csv", na_rep="NA")
+    
+    
+### quantizing the performance midi files ###
+#############################################
+        
+def quantizeMidi(noteValue,quantizeOffsets=True, quantizeDurations=True):
+    """This function quantizes the midi performance data.noteValue indicates
+    on which note value the quantization should be based (1=quarter, 2=eighth, 
+    4=sixteenth, 0.5=half, 0.25=whole, 3=eighth triplets), quantizeOffsets and 
+    quantize Durations indicate if the beginning or end of note events should
+    be quantized."""
+    i=len(results.index)-1
+    while i>=0:
+        results["MidiFile"][i]=results["MidiFile"][i].quantize(noteValue, quantizeOffsets,
+               quantizeDurations)
+        i=i-1
+        
+  
+#########################
+### compare functions ###
+#########################  
+    
+### compare the number of notes ###
+###################################
+
+def compareNumberOfNotes():
+    """ This function subtracts the correct number of notes from the
+    number of notes performed by a participant and stores them in the
+    column ACC_numberOfNotes of the results dataframe.
+    A negativ result indicates that some notes were missed,
+    a positive result indicates that too many notes were played and
+    0 indicates that the correct number of notes was performed.""" 
+    i=len(results.index)-1                          # iterate through the dataFrame
+    results["ommissionAddition"]="NaN"              # create an omissionAddition variable
+    while i>=0:                                     # subtract the correct from the given number of notes
+        results["ommissionAddition"][i]=len(results["MidiFile"][i].flat.notes)-len(results["correct"][i].flat.notes)
+        i=i-1
+
+
+### compare the position of notes ###
+#####################################
+
+def compareNotePositions():
+    """This function checks if the notes were performed at the correct position.
+    It stores a relative value in the ACC_notePosition column in the results 
+    dataFrame. For example, a value of 0.5 means that half of the notes were
+    played at the correct position. This variable does not make any indication
+    about additional notes performed at locations were no note had to be
+    performed or about the duration of the performed notes. This function also
+    works if multiple notes were performed simultaneously (i.e. for chords)."""
+    results["ACC_notePosition"]=0.0                                                             # create the variable ACC-notePosition as a float variable in the dataframe
+    i=len(results.index)-1
+    while i>=0:
+        correctNotePositions=[]
+        performedNotePositions=[]
+        for allNotes in results["correct"][i][0].getElementsByClass(m21.note.Note):
+            correctNotePositions.append(allNotes.offset)                                        # store the correct note offsets in a list
+        for everyNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            performedNotePositions.append(everyNote.offset)                                     # store the offsets of performed notes in a list
+            performedNotePositions = list(dict.fromkeys(performedNotePositions))                # remove duplicates from the list, as otherwise, playing two notes at a certain offste would add 2 to the ACC variable
+        for eachElement in performedNotePositions:
+            if eachElement in correctNotePositions:
+                results["ACC_notePosition"][i]=results["ACC_notePosition"][i]+1                 # if the offsets of performed notes are in the list of the correct offsets, add 1 to the variable
+        results["ACC_notePosition"][i]=results["ACC_notePosition"][i]/len(correctNotePositions) # create a relative variable by dividing the number of correctly performed note positions by the overall number of performed notes
+        i=i-1
+        
+
+def compareNotePositionsOfSingleNotes():
+    """This function checks if the notes were performed at the correct position.
+    It creates a new variable in the rsults dataFrame for each note and stores in this variable
+    if a note had the correct position (1) or not (0).
+    dataFrame. This variable does not make any indication
+    about additional notes performed at locations were no note had to be
+    performed or about the duration of the performed notes. This function also
+    works if multiple notes were performed simultaneously (i.e. for chords)."""
+    # For each item, create a variable indicating how many note had to be performed.
+    i=len(results.index)-1
+    correctNum=[]
+    while i>=0:
+        correctNum.append(len(results["correct"][i].flat.notes))
+        i=i-1
+    maxNum=max(correctNum)
+    j=1
+    while j<=maxNum:
+        results["ACC_notePosition_note"+str(j)]="NaN"
+        j=j+1
+    i=len(results.index)-1
+    while i>=0:
+        correctNotePositions=[]
+        performedNotePositions=[]
+        correct=[]
+        for allNotes in results["correct"][i][0].getElementsByClass(m21.note.Note):
+            correctNotePositions.append(allNotes.offset)                                        # store the correct note offsets in a list
+        for everyNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            performedNotePositions.append(everyNote.offset) 
+        for eachElement in correctNotePositions:
+            if eachElement in performedNotePositions:
+                correct.append(1)
+            if not eachElement in performedNotePositions:
+                correct.append(0)
+        n=1
+        while n<=len(correct):
+            results["ACC_notePosition_note"+str(n)][i]=correct[n-1]
+            n=n+1        
+        i=i-1
+            
+            
+### compare the pitch of notes at the correct position ###
+##########################################################
+
+def comparePitch():
+    """ This function compares the pitch of the notes  played at the correct
+    position irrespective of the octave and stores a relativ value in the column
+    ACC_pitch in the results dataFrame. E.g. a value of 0.8 means that 80% of
+    the notes in the correct position were performed with the correct pitch.
+    The pitch of notes performed at wrong positions are not judged. The
+    octave is not considered, i.e. if C4 had to be performed and C5 was 
+    performed this is counted as correct."""
+    results["ACC_pitch"]=0.0                                                                # create a variable ACC-pitch as a float in the dataframe
+    i=len(results.index)-1                                                                  # itreate throught the dataFrame
+    while i>=0:
+        correctPitchesByOffset={}                                                           # create empty dictionaries
+        performedPitchesByOffset={}
+        for everyNote in results["correct"][i][0].getElementsByClass(m21.note.Note):    
+            correctPitchesByOffset[everyNote.offset]=everyNote.name              # add the offset and pitch of the correct solution to the dictionary
+        for eachNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            performedPitchesByOffset[eachNote.offset]=eachNote.name              # add the offsets and pitches of the performed notes to the dictionary
+        performedPitchKeyList=list(performedPitchesByOffset.keys())                         # create a list with all the keys of the dictionaries
+        correctPitchKeyList=list(correctPitchesByOffset.keys())
+        for eachKey in performedPitchKeyList:                                               # if the offset of a performed note is in the list of the offsets of the correct notes
+            if eachKey in correctPitchKeyList:
+                if performedPitchesByOffset[eachKey]==correctPitchesByOffset[eachKey]:      # and if the pitch of that note is correct, add one to the ACC_pitch variable
+                   results["ACC_pitch"][i]=results["ACC_pitch"][i]+1                        
+        results["ACC_pitch"][i]=results["ACC_pitch"][i]/(results["ACC_notePosition"][i]*len(results["correct"][i].flat.notes))     
+        i=i-1                                                                               # create a relative measure by dividing the number of correct pitches by the number of notes performed at the correct position
+
+def comparePitchWithOctave():
+    """ This function compares the pitch of the notes played at the correct
+    position and stores a relativ value in the column ACC_pitchWithOctave
+    in the results dataFrame. E.g. a value of 0.8 means that 80% of the notes
+    in the correct position were performed with the correct pitch.
+    The pitch of notes performed at wrong positions are not judged.
+    The octave is considered, i.e. if C4 had to be played and C5 was played,
+    this is counted as wrong."""
+    results["ACC_pitch"]=0.0                                                                # create a variable ACC-pitch as a float in the dataframe
+    i=len(results.index)-1                                                                  # itreate throught the dataFrame
+    while i>=0:
+        correctPitchesByOffset={}                                                           # create empty dictionaries
+        performedPitchesByOffset={}
+        for everyNote in results["correct"][i][0].getElementsByClass(m21.note.Note):    
+            correctPitchesByOffset[everyNote.offset]=everyNote.nameWithOctave               # add the offset and pitch of the correct solution to the dictionary
+        for eachNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            performedPitchesByOffset[eachNote.offset]=eachNote.nameWithOctave               # add the offsets and pitches of the performed notes to the dictionary
+        performedPitchKeyList=list(performedPitchesByOffset.keys())                         # create a list with all the keys of the dictionaries
+        correctPitchKeyList=list(correctPitchesByOffset.keys())
+        for eachKey in performedPitchKeyList:                                               # if the offset of a performed note is in the list of the offsets of the correct notes
+            if eachKey in correctPitchKeyList:
+                if performedPitchesByOffset[eachKey]==correctPitchesByOffset[eachKey]:      # and if the pitch of that note is correct, add one to the ACC_pitch variable
+                   results["ACC_pitchWithOctave"][i]=results["ACC_pitchWithOctave"][i]+1                        
+        results["ACC_pitchWithOctave"][i]=results["ACC_pitchWithOctave"][i]/(results["ACC_notePosition"][i]*len(results["correct"][i].flat.notes))     
+        i=i-1   
+
+def comparePitchOfSingleNotes():
+    """ This function compares the pitch of the notes played at the correct
+    position. It creates a new variable for each note in the results data frame.
+    In this variable, it indicates if a note at the correct position had
+    the correct pitch (1) or not (0). The pitch of notes 
+    performed at wrong positions are not judged."""
+    i=len(results.index)-1
+    correctNum=[]
+    while i>=0:
+        correctNum.append(len(results["correct"][i].flat.notes))
+        i=i-1
+    maxNum=max(correctNum)
+    j=1
+    while j<=maxNum:
+        results["ACC_pitch_note"+str(j)]="NaN"
+        j=j+1
+    i=len(results.index)-1                                                                # create a variable ACC-pitch as a float in the dataframe
+    i=len(results.index)-1                                                                  # itreate throught the dataFrame
+    while i>=0:
+        correctPitchesByOffset={}                                                           # create empty dictionaries
+        performedPitchesByOffset={}
+        correct=[]
+        for everyNote in results["correct"][i][0].getElementsByClass(m21.note.Note):    
+            correctPitchesByOffset[everyNote.offset]=everyNote.nameWithOctave               # add the offset and pitch of the correct solution to the dictionary
+        for eachNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            performedPitchesByOffset[eachNote.offset]=eachNote.nameWithOctave               # add the offsets and pitches of the performed notes to the dictionary
+        performedPitchKeyList=list(performedPitchesByOffset.keys())                         # create a list with all the keys of the dictionaries
+        correctPitchKeyList=list(correctPitchesByOffset.keys())
+        for eachKey in correctPitchKeyList :                                               # if the offset of a performed note is in the list of the offsets of the correct notes
+            if eachKey in performedPitchKeyList:
+                if correctPitchesByOffset[eachKey]==performedPitchesByOffset[eachKey]:      # and if the pitch of that note is correct, add one to the ACC_pitch variable
+                   correct.append(1)
+                if not correctPitchesByOffset[eachKey]==performedPitchesByOffset[eachKey]:      # and if the pitch of that note is correct, add one to the ACC_pitch variable
+                   correct.append(0)   
+            if not eachKey in performedPitchKeyList:
+                correct.append("NaN")
+        n=1
+        while n<=len(correct):
+            results["ACC_pitch_note"+str(n)][i]=correct[n-1]
+            n=n+1                        
+        i=i-1    
+
+
+### compare the duration of notes at the correct position ###
+#############################################################
+
+def compareDuration():
+    """This function compares the duration of the notes played at the correct
+    position and stores a relative value in the column ACC_duration in the 
+    results dataFrame. The duration of notes performed at wrong positions
+    are not judged."""
+    results["ACC_duration"]=0.0
+    i=len(results.index)-1
+    while i >=0:                            # same procedure as with pitch, but using not pitch, but duration in quarter length
+        correctDurationsByOffset={}
+        performedDurationsByOffset={}
+        for everyNote in results["correct"][i][0].getElementsByClass(m21.note.Note):
+            correctDurationsByOffset[everyNote.offset]=everyNote.duration.quarterLength
+        for eachNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            performedDurationsByOffset[eachNote.offset]=eachNote.duration.quarterLength
+        correctDurationsKeyList=list(correctDurationsByOffset.keys())
+        performedDurationsKeyList=list(performedDurationsByOffset.keys())
+        for eachKey in performedDurationsKeyList:
+            if eachKey in correctDurationsKeyList:
+                if performedDurationsByOffset[eachKey]==correctDurationsByOffset[eachKey]:
+                    results["ACC_duration"][i]=results["ACC_duration"][i]+1
+        results["ACC_duration"][i]=results["ACC_duration"][i]/(results["ACC_notePosition"][i]*len(results["correct"][i].flat.notes))
+        i=i-1
+        
+def compareDurationOfSingleNotes():
+    """This function compares the duration of the notes played at the correct
+    position and stores a relative value in the column ACC_duration in the 
+    results dataFrame. The duration of notes performed at wrong positions
+    are not judged."""
+    i=len(results.index)-1
+    correctNum=[]
+    while i>=0:
+        correctNum.append(len(results["correct"][i].flat.notes))
+        i=i-1
+    maxNum=max(correctNum)
+    j=1
+    while j<=maxNum:
+        results["ACC_duration_note"+str(j)]="NaN"
+        j=j+1
+    i=len(results.index)-1
+    while i >=0:                            # same procedure as with pitch, but using not pitch, but duration in quarter length
+        correctDurationsByOffset={}
+        performedDurationsByOffset={}
+        correct=[]
+        for everyNote in results["correct"][i][0].getElementsByClass(m21.note.Note):
+            correctDurationsByOffset[everyNote.offset]=everyNote.duration.quarterLength
+        for eachNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            performedDurationsByOffset[eachNote.offset]=eachNote.duration.quarterLength
+        correctDurationsKeyList=list(correctDurationsByOffset.keys())
+        performedDurationsKeyList=list(performedDurationsByOffset.keys())
+        for eachKey in correctDurationsKeyList:
+            if eachKey in performedDurationsKeyList:
+                if correctDurationsByOffset[eachKey]==performedDurationsByOffset[eachKey]:
+                    correct.append(1)
+                if not correctDurationsByOffset[eachKey]==performedDurationsByOffset[eachKey]:
+                    correct.append(0)
+            if not eachKey in performedDurationsKeyList:
+                correct.append("NaN")
+        n=1
+        while n<=len(correct):
+            results["ACC_duration_note"+str(n)][i]=correct[n-1]
+            n=n+1  
+        i=i-1
+
+
+##########################
+### describe functions ###
+##########################
+
+### describe performance ###
+############################
+
+def describeNumberOfNotes():
+    """This functions counts the number of notes that were performed by the participants."""
+    i=len(results.index)-1
+    results["numberOfPerformedNotes"]="NaN"
+    while i>=0:
+        results["numberOfPerformedNotes"][i]=len(results["MidiFile"][i].flat.notes)
+        i=i-1
+
+def describeNumberOfChords():
+    """This function describes the number of chords performed by the participants."""
+    i=len(results.index)-1
+    results["numberOfPerformedChords"]=0
+    while i>=0:
+        for thisChord in results["MidiFile"][i][0].getElementsByClass(m21.chord.Chord):
+            results["numberOfPerformedChords"][i]=results["numberOfPerformedChords"][i]+1
+        i=i-1
+
+def describePitchSpan():
+    """This functions returns the span of the performed pitches."""
+    i=len(results.index)-1
+    results["pitchRange"]="NaN"
+    while i >=0:
+        pitchSpan=m21.analysis.discrete.Ambitus.getPitchSpan(results["MidiFile"][i][0], subStream=results["MidiFile"][i][0])
+        pitch1=pitchSpan[0].nameWithOctave
+        pitch2=pitchSpan[1].nameWithOctave
+        results["pitchRange"][i]=[pitch1, pitch2]
+        i=i-1
+
+def describeNoteValues():
+    """This function returns a list of the note values performed by the participants."""
+    i=len(results.index)-1
+    results["performedNoteValues"]="NaN"
+    while i >=0:
+        allDurations=[]
+        for eachNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            allDurations.append(eachNote.duration.type)
+        for eachChord in results["MidiFile"][i][0].getElementsByClass(m21.chord.Chord):
+            allDurations.append(eachChord.duration.type)
+        results["performedNoteValues"][i]=list(set(allDurations)) # remove duplicates by using the set function
+        i=i-1
+            
+def describeDuration():
+    """This function returns the duration of the whole performance in quarter notes."""
+    i=len(results.index)-1
+    results["durationOfPerformanceInQuarterNotes"]=0.0
+    while i >=0:
+        results["durationOfPerformanceInQuarterNotes"][i]=results["MidiFile"][i][0].duration.quarterLength
+        i=i-1
+
+def describeNumberOfBars():
+    """This function returns the number of bars of the performance."""
+    i=len(results.index)-1
+    results["numberOfPerformedBars"]=0.0
+    while i >=0:
+        results["numberOfPerformedBars"][i]=results["MidiFile"][i][0][-1].measureNumber
+        i=i-1
+
+def describeMeter():
+    """This function returns the meter of each performance."""
+    i=len(results.index)-1
+    results["meter"]="NaN"
+    while i >=0:
+        results["meter"][i]=str(results["MidiFile"][i][0].timeSignature.numerator)+"/"+str(results["MidiFile"][i][0].timeSignature.denominator)
+        i=i-1
+
+def describeInstrument():
+    """This function returns the instrument information of the midi file."""
+    i=len(results.index)-1
+    results["instrument"]="NaN"
+    while i >=0:
+        for eachInstrument in results["MidiFile"][i][0].getElementsByClass("Instrument"):
+            results["instrument"][i]=eachInstrument
+        i=i-1
+
+def describeClef():
+    """This function retruns the clef of the performance."""
+    i=len(results.index)-1
+    results["clef"]="NaN"
+    while i >=0:
+        for eachClef in results["MidiFile"][i][0].getElementsByClass("Clef"):
+            results["clef"][i]=eachClef
+        i=i-1
+
+def describeTempo():
+    """This function describes the tempo of the performance."""
+    i=len(results.index)-1
+    results["tempo"]="NaN"
+    while i >=0:
+        for eachTempo in results["MidiFile"][i][0].getElementsByClass("MetronomeMark"):
+            results["tempo"][i]=eachTempo.getQuarterBPM()
+        i=i-1
+
+def describeKey():
+    """This function returns the key of the performances."""
+    i=len(results.index)-1
+    results["key"]="NaN"
+    while i >=0:
+        for eachKey in results["MidiFile"][i][0].getElementsByClass("Key"):
+            results["key"][i]=eachKey
+        i=i-1
+
+def describePerformedNotes():
+    """This function returns the complete performance of the participants in the format
+    Note1(offset, pitch, duration), Note2(offset, pitch, duration), etc. This includes the
+    full information of the perfored notes, i.e. the beginning, pitch and duration of each note."""
+    i=len(results.index)-1
+    results["performedNotes"]="NaN"
+    while i >=0:
+        j=1
+        performedNotes=[]
+        for eachNote in results["MidiFile"][i][0].getElementsByClass(m21.note.Note):
+            performedNotes.append({"Note"+str(j):[{"offset":eachNote.offset},{"pitch":eachNote.nameWithOctave},{"notevalue":eachNote.duration.quarterLength}]})
+            j=j+1
+        results["performedNotes"][i]=performedNotes
+        i=i-1
+
+
+###############################
+### comprehensive functions ###
+###############################
+
+def getYourMidiFiles(performanceDataPath, solutionDataPath, startItemName="NaN", endItemName="NaN", startSubjectName="NaN", endSubjectName="NaN"):
+    indicateFilePaths(performanceDataPath, solutionDataPath)
+    importMidiFiles(performanceDataPath, startItemName, endItemName, startSubjectName, endSubjectName)
+    importCorrectSolutions(solutionDataPath)
+    addCorrectSolutions()
+
+def compareMidi():
+    if len(results.columns)>1 and results.columns[1]=="item":
+        compareNumberOfNotes()
+        compareNotePositions()
+        comparePitch()
+        compareDuration()
+        print ("""Your MidiFiles were successfully compared with your
+        correctSolutions.""")
+    else:
+        print("""Your dataFrame contains no correct solutions.
+        A comparison cannot be performed. Please import correct solutions
+        with the importCorrectSolutions() function and add them to the 
+        dataFrame with the addCorrectSolutions() function.""")
+        
+
+def describeMidi():
+    statement1=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Note") for eachFile in results["MidiFile"]):
+        describeNumberOfNotes()
+        describePitchSpan()
+        describeNoteValues()
+        describeDuration()
+        describePerformedNotes()
+    else:
+        statement1="Your MidiFiles do not contain any notes to be described."
+    statement3=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Instrument") for eachFile in results["MidiFile"]):
+        describeInstrument()
+    else:
+        statement3="Your MidiFiles do not contain any indication of instrument."
+    statement4=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Clef") for eachFile in results["MidiFile"]):
+        describeClef()
+    else:
+        statement4="Your MidiFiles do not contain any indication of clef."
+    statement5=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Chord") for eachFile in results["MidiFile"]):
+        describeNumberOfChords()
+    else:
+        statement5="Your MidiFiles do not contain any chords."
+    statement6=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("MetronomeMark") for eachFile in results["MidiFile"]):
+        describeTempo()
+    else:
+        statement6="Your MidiFiles do not contain any indication of tempo."
+    statement7=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Key") for eachFile in results["MidiFile"]):
+        describeKey()
+    else:
+        statement7="Your MidiFiles do not contain any indication of key."
+    statement8=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Measure") for eachFile in results["MidiFile"]):
+        describeNumberOfBars()
+    else:
+        statement8="Your MidiFiles do not contain any measures, hence numberOfBars cannot be calculated."
+    print (statement1, statement3, statement4, statement5, statement6, 
+           statement7, statement8, """Your MidiFiles were successfully described.""")
+
+
+def analyzeMidi():
+    #describe Midi function
+    statement1=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Note") for eachFile in results["MidiFile"]):
+        describeNumberOfNotes()
+        describePitchSpan()
+        describeNoteValues()
+        describeDuration()
+        describePerformedNotes()
+    else:
+        statement1="Your MidiFiles do not contain any notes to be described."
+    statement3=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Instrument") for eachFile in results["MidiFile"]):
+        describeInstrument()
+    else:
+        statement3="Your MidiFiles do not contain any indication of instrument, hence instrument will not be described.."
+    statement4=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Clef") for eachFile in results["MidiFile"]):
+        describeClef()
+    else:
+        statement4="Your MidiFiles do not contain any indication of clef, hence clef will not be described.."
+    statement5=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Chord") for eachFile in results["MidiFile"]):
+        describeNumberOfChords()
+    else:
+        statement5="Your MidiFiles do not contain any chords, hence numberOfChords cannnot be calculated."
+    statement6=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("MetronomeMark") for eachFile in results["MidiFile"]):
+        describeTempo()
+    else:
+        statement6="Your MidiFiles do not contain any indication of tempo, hence tempo will not be described."
+    statement7=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Key") for eachFile in results["MidiFile"]):
+        describeKey()
+    else:
+        statement7="Your MidiFiles do not contain any indication of key, hence key will not be described.."
+    statement8=" "
+    if any(results["MidiFile"][0][0].hasElementOfClass("Measure") for eachFile in results["MidiFile"]):
+        describeNumberOfBars()
+    else:
+        statement8="Your MidiFiles do not contain any measures, hence numberOfBars cannot be calculated."
+    # compare Midi function
+    statement9=" "
+    if len(results.columns)>1 and results.columns[1]=="item":
+        compareNumberOfNotes()
+        compareNotePositionsOfSingleNotes()
+        compareNotePositions()
+        comparePitchOfSingleNotes()
+        comparePitch()
+        compareDurationOfSingleNotes()
+        compareDuration()
+    else:
+        statement9="""Your dataFrame contains no correct solutions.
+        A comparison cannot be performed. Please import correct solutions
+        with the importCorrectSolutions() function and add them to the 
+        dataFrame with the addCorrectSolutions() function."""
+    print (statement1, statement3, statement4, statement5, statement6,
+           statement7, statement8, statement9, """Your MidiFiles were successfully
+           described and compared with your correctSolutions.""")
