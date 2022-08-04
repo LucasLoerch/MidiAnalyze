@@ -2,8 +2,11 @@
 Python algorithm to assess the accuracy of the performance of notated musical melodies on Midi instruments
 
 Author: Lucas Lörch; lucasloerch@posteo.de; ORCID https://orcid.org/0000-0002-5665-3313 
-\License:	Creative Commons Attribution-NonCommercial 3.0 Unported License (CC BY-NC 3.0)
+
+License:	Creative Commons Attribution-NonCommercial 3.0 Unported License (CC BY-NC 3.0)
+
 Cite:	Lörch, L. (2021). MidiAnalyze. A Python Package for the Analysis of Musical Performance Midi Data. https://doi.org/10.17605/OSF.IO/FKW4B
+
 Manual: [MidiAnalyze v1-0 Manual.pdf](https://github.com/LucasLoerch/MidiAnalyze/files/9260162/MidiAnalyze.v1-0.Manual.pdf)
 
 # General idea and purpose
